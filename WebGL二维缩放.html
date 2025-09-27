@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-lessons-ui.js"></script>
+
+    <style>
+        @import url("https://webglfundamentals.org/webgl/resources/webgl-tutorials.css");
+
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+
+    <!-- 顶点着色器 -->
+    <script id="vertex-shader-2d" type="x-shader/x-vertex">
+        attribute vec2 a_position;
+        
+        uniform vec2 u_resolution;
+        uniform vec2 u_translation;
+        uniform vec2 u_rotation; // (sin(θ), cos(θ))
+        uniform vec2 u_scale;
+
+        void main() {
+            //缩放
+            vec2 scaledPosition=a_position*u_scale;
+
+            //旋转
+            vec2 rotatedPosition=vec2(
+                scaledPosition.x*u_rotation.y+scaledPosition.y*u_rotation.x,
+                scaledPosition.y*u_rotation.y- scaledPosition.x * u_rotation.x);
+            
+            //平移
+            vec2 position=rotatedPosition+u_translation;
+
+            vec2 zeroToOne=position/u_resolution;
+            vec2 zeroToTwo=zeroToOne*2.0;
+            vec2 clipSpace=zeroToTwo-1.0;
+
+            gl_Position=vec4(clipSpace*vec2(1,-1),0,1);
+        }
+
+
+    </script>
+    <!-- 片段着色器 -->
+    <script id="fragment-shader-2d" type="x-shader/x-fragment">
+        precision mediump float;
+        
+        uniform vec4 u_color;
+        
+        void main() {
+            gl_FragColor=u_color;
+        }
+    </script>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="uiContainer">
+        <div id="ui">
+            <div id="x"></div>
+            <div id="y"></div>
+            <div id="angle"></div>
+            <div id="scaleX"></div>
+            <div id="scaleY"></div>
+        </div>
+    </div>
+    <script>
+        function main() {
+            var canvas = document.querySelector("#canvas");
+            var gl = canvas.getContext("webgl");
+            if (!gl) {
+                return;
+            }
+
+            // 创建着色器程序
+            var program = webglUtils.createProgramFromScripts(gl, ["vertex-shader-2d", "fragment-shader-2d"]);
+
+            // 获取属性位置
+            var positionLocation = gl.getAttribLocation(program, "a_position");
+            // 获取uniform位置
+            var resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+            var colorLocation = gl.getUniformLocation(program, "u_color");
+            var translationLocation = gl.getUniformLocation(program, "u_translation");
+            var rotationLocation = gl.getUniformLocation(program, "u_rotation");
+            var scaleLocation = gl.getUniformLocation(program, "u_scale");
+
+            // 创建缓冲区
+            var positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            // 设置几何图形数据
+            setGeometry(gl);
+
+            var translation = [100, 150];
+            var rotation = [0, 1]; // 0度
+            var scale = [1, 1];
+            var color = [Math.random(), Math.random(), Math.random(), 1];
+
+            drawScene();
+
+            //Setup a ui
+            webglLessonsUI.setupSlider("#x", { value: translation[0], slide: updatePosition(0), max: gl.canvas.width });
+            webglLessonsUI.setupSlider("#y", { value: translation[1], slide: updatePosition(1), max: gl.canvas.height });
+            webglLessonsUI.setupSlider("#angle", { slide: updateAngle, max: 360 });
+            webglLessonsUI.setupSlider("#scaleX", { value: scale[0], slide: updateScales(0), min: -5, max: 5, step: 0.01, precision: 2 });
+            webglLessonsUI.setupSlider("#scaleY", { value: scale[1], slide: updateScales(1), min: -5, max: 5, step: 0.01, precision: 2 });
+
+            function updatePosition(index) {
+                return function (event, ui) {
+                    translation[index] = ui.value;
+                    drawScene();
+                };
+            }
+
+
+            function updateAngle(event, ui) {
+                var angleInDegrees = 360-ui.value;
+                var angleInRadians = angleInDegrees * Math.PI / 180;
+                rotation[0] = Math.sin(angleInRadians);
+                rotation[1] = Math.cos(angleInRadians);
+                drawScene();
+            }
+
+            function updateScales(index) {
+                return function (event, ui) {
+                    scale[index] = ui.value;
+                    drawScene();
+                };
+            }
+
+            // 绘制场景
+            function drawScene() {
+                webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+                // 告诉WebGL如何从裁剪空间对应到像素
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+                gl.useProgram(program);
+
+                // 启用属性
+                gl.enableVertexAttribArray(positionLocation);
+                // 绑定缓冲区
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                // 告诉属性怎么从positionBuffer中读取数据 (ARRAY_BUFFER)
+                var size = 2;          // 每次迭代运行提取两个单位数据
+                var type = gl.FLOAT;   // 每个单位的数据类型是32位浮点数
+                var normalize = false; // 不需要归一化数据
+                var stride = 0;        // 0 = 移动单位数量 * 每个单位占用内存（sizeof(type)） 每次迭代运行运动多少内存到下一个数据开始点
+                var offset = 0;        // 从缓冲起始位置开始读取
+                gl.vertexAttribPointer(positionLocation, size, type, normalize, stride, offset);
+
+                // 设置uniform
+                gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
+                gl.uniform4fv(colorLocation, color);
+                gl.uniform2fv(translationLocation,translation);
+                gl.uniform2fv(rotationLocation,rotation);
+                gl.uniform2fv(scaleLocation,scale);
+
+                // 绘制
+                var primitiveType = gl.TRIANGLES;
+                var offset = 0;
+                var count = 18;
+                gl.drawArrays(primitiveType, offset, count);
+            }
+
+        }
+        function setGeometry(gl) {
+            gl.bufferData(
+                gl.ARRAY_BUFFER,
+                new Float32Array([
+                    // left column
+                    0, 0,
+                    30, 0,
+                    0, 150,
+                    0, 150,
+                    30, 0,
+                    30, 150,
+
+                    // top rung
+                    30, 0,
+                    100, 0,
+                    30, 30,
+                    30, 30,
+                    100, 0,
+                    100, 30,
+
+                    // middle rung
+                    30, 60,
+                    67, 60,
+                    30, 90,
+                    30, 90,
+                    67, 60,
+                    67, 90,
+                ]),
+                gl.STATIC_DRAW
+            );
+        }
+        
+        main();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script id="vertexShader3d" type="x-shader/x-vertex">
+        attribute vec4 a_position;
+        attribute vec3 a_normal;
+        attribute vec2 a_texcoord;
+
+        uniform mat4 u_wolrd;
+        uniform mat4 u_viewInverse;
+        uniform mat4 u_worldInverseTranspose;
+        uniform mat4 u_worldViewProjection;
+        uniform vec3 u_lightWorldPosition;
+
+        varying vec4 v_position;
+        varying vec3 v_normal;
+        varying vec2 v_texcoord;
+        varying vec3 v_surfaceToLight;
+        varying vec3 v_surfaceToView;
+
+        void main(){
+            v_texcoord=a_texcoord;
+            v_position=(u_worldViewProjection*a_position);
+            v_normal=(u_worldInverseTranspose*vec4(a_normal,0)).xyz;
+            v_surfaceToLight=u_viewInverse[3]-(u_world*a_position).xyz;
+            v_surfaceToView=u_lightWorldPosition-(u_world*a_position).xyz;
+        }
+
+
+    </script>
+
+    <script id="fragmentShader3d" type="x-shader/x-fragment">
+        
+    </script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/m4.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/primitives.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/texture-utils.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/chroma.min.js"></script>
+
+    <style>
+        @import url("https://webglfundamentals.org/webgl/resources/webgl-tutorials.css");
+
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        function main() {
+
+        }        
+    </script>
+</body>
+
+</html>

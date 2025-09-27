@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+ 
+    <script id="vertex-shader-2d" type="notjs">
+
+        // 一个属性变量，将会从缓冲中获取数据
+        attribute vec2 a_position;
+        uniform vec2 u_resolution;
+
+        // 所有着色器都有一个main方法
+        void main() {
+        
+        // 从像素坐标转换到 0.0 到 1.0
+        vec2 zeroToOne = a_position / u_resolution;
+
+        // 再把 0->1 转换 0->2
+        vec2 zeroToTwo = zeroToOne * 2.0;
+
+        // 把 0->2 转换到 -1->+1 (裁剪空间)
+        vec2 clipSpace = zeroToTwo - 1.0;
+
+        // gl_Position 是一个顶点着色器主要设置的变量
+        gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+        }
+        
+    </script>
+
+    <script id="fragment-shader-2d" type="notjs">
+
+            // 片段着色器没有默认精度，所以我们需要设置一个精度
+            // mediump是一个不错的默认值，代表“medium precision”（中等精度）
+            precision mediump float;
+            
+            //全局变量接收自定义颜色
+            uniform vec4 u_color;
+
+            void main() {
+            // gl_FragColor是一个片段着色器主要设置的变量
+            gl_FragColor = vec4(1, 0, 0.5, 1); // 返回“瑞迪施紫色”
+            }
+            
+        </script>
+</head>
+
+<body>
+    <canvas id="c" width="400" height="300"></canvas>
+    <script>
+        function compileShader(gl, shaderSource, shaderType) {
+            //创建着色器
+            var shader = gl.createShader(shaderType);
+
+            //设置着色器源码
+            gl.shaderSource(shader, shaderSource);
+
+            //编译着色器
+            gl.compileShader(shader);
+
+            // 检测编译是否成功
+            var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+            if (!success) {
+                // 编译过程出错，获取错误信息。
+                throw "could not compile shader:" + gl.getShaderInfoLog(shader);
+            }
+
+            return shader;
+        }
+
+        function createProgram(gl, vertexShader, fragmentShader) {
+            var program = gl.createProgram();
+            //附上着色器
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+
+            //链接到程序
+            gl.linkProgram(program);
+
+            // 检查链接是否成功
+            var success = gl.getProgramParameter(program, gl.LINK_STATUS);
+            if (!success) {
+                // 链接过程出现问题
+                throw ("program failed to link:" + gl.getProgramInfoLog(program));
+            }
+
+            return program;
+        }
+
+        function createShaderFromScript(gl, scriptId, opt_shaderType) {
+            // 通过id找到script标签
+            var shaderScript = document.getElementById(scriptId);
+            if (!shaderScript) {
+                throw ("*** Error: unknown script element" + scriptId);
+            }
+
+            // 提取标签内容。
+            var shaderSource = shaderScript.text;
+
+            // 如果没有传着色器类型，就使用标签的 ‘type’ 属性
+            if (!opt_shaderType) {
+                if (shaderScript.type == "x-shader/x-vertex") {
+                    opt_shaderType = gl.VERTEX_SHADER;
+                } else if (shaderScript.type == "x-shader/x-fragment") {
+                    opt_shaderType = gl.FRAGMENT_SHADER;
+                } else {
+                    throw ("*** Error: shader type not set");
+                }
+            }
+            return compileShader(gl, shaderSource, opt_shaderType);
+        }
+
+        function createProgramFromScripts(
+            gl, vertexShaderId, fragmentShaderId) {
+            var vertexShader = createShaderFromScript(gl, vertexShaderId, gl.VERTEX_SHADER);
+            var fragmentShader = createShaderFromScript(gl, fragmentShaderId, gl.FRAGMENT_SHADER);
+            return createProgram(gl, vertexShader, fragmentShader);
+        }
+        var canvas = document.querySelector('#c');
+        var gl = canvas.getContext('webgl');
+        if (!gl) {
+            alert('你不能使用WebGL！');
+        }
+        var program = createProgramFromScripts(gl, "vertex-shader-2d", "fragment-shader-2d");
+
+        //找到这个属性值所在的位置
+        var colorUniformLocation = gl.getUniformLocation(program, 'u_color')
+
+        //为了设置它的值我们需要找到它的位置。
+        var resolutionUniformLocation = gl.getUniformLocation(program, "u_resolution");
+
+        // look up where the vertex data needs to go.
+        var positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+
+        //属性值从缓冲中获取数据，所以我们创建一个缓冲
+        var positionBuffer = gl.createBuffer();
+
+        // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+        // draw 50 random rectangles in random colors
+        for (var ii = 0; ii < 50; ++ii) {
+            // Setup a random rectangle
+            // This will write to positionBuffer because
+            // its the last thing we bound on the ARRAY_BUFFER
+            // bind point
+            setRectangle(
+                gl, randomInt(300), randomInt(300), randomInt(300), randomInt(300));
+
+            // Set a random color.
+            gl.uniform4f(colorUniformLocation, Math.random(), Math.random(), Math.random(), 1);
+
+            // Draw the rectangle.
+            var primitiveType = gl.TRIANGLES;
+            var offset = 0;
+            var count = 6;
+            gl.drawArrays(primitiveType, offset, count);
+        }
+
+
+        // 返回 0 到 range 范围内的随机整数
+        function randomInt(range) {
+            return Math.floor(Math.random() * range);
+        }
+
+        // 用参数生成矩形顶点并写进缓冲
+        function setRectangle(gl, x, y, width, height) {
+            var x1 = x;
+            var x2 = x + width;
+            var y1 = y;
+            var y2 = y + width;
+
+
+            // 注意: gl.bufferData(gl.ARRAY_BUFFER, ...) 将会影响到
+            // 当前绑定点`ARRAY_BUFFER`的绑定缓冲
+            // 目前我们只有一个缓冲，如果我们有多个缓冲
+            // 我们需要先将所需缓冲绑定到`ARRAY_BUFFER`
+
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+                x1, y1,
+                x2, y1,
+                x1, y2,
+                x1, y2,
+                x2, y1,
+                x2, y2]), gl.STATIC_DRAW)
+        }
+        
+        //视口变换
+        gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+
+         // 清空画布
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // 告诉它用我们之前写好的着色程序（一个着色器对）
+        gl.useProgram(program);
+
+        // 设置全局变量 分辨率
+        gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+
+        //接下来我们需要告诉WebGL怎么从我们之前准备的缓冲中获取数据给着色器中的属性。 
+        //首先我们需要启用对应属性
+        gl.enableVertexAttribArray(positionAttributeLocation);
+
+        //然后指定从缓冲中读取数据的方式
+        var size=2;
+        var type=gl.FLOAT;
+        var normalize=false;
+        var stride=0;
+        var offset=0;
+        gl.vertexAttribPointer(
+            positionAttributeLocation, size, type, normalize, stride, offset
+        )
+
+        
+    </script>
+</body>
+
+</html>

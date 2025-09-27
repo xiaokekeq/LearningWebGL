@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+
+    <script id="vertexShader3d" type="x-shader/x-vertex">
+        attribute vec4 a_position;
+        attribute vec3 a_normal;
+
+        uniform mat4 u_world;
+        uniform mat4 u_worldViewProjection;
+        uniform mat4 u_worldInverseTranspose;
+
+        uniform vec3 u_lightWorldPosition;
+        //获取相机的位置
+        uniform vec3 u_viewWorldPosition;
+        
+        varying vec3 v_normal;
+
+        varying vec3 v_surfaceToLight;
+        varying vec3 v_surfaceToView;
+
+        void main(){
+            // Multiply the position by the matrix.
+            gl_Position=u_worldViewProjection*a_position;
+
+            // orient the normals and pass to the fragment shader
+            //让法向量始终与平面相互垂直，不管进行旋转、缩放、平移
+            v_normal=mat3(u_worldInverseTranspose)*a_normal;
+            
+            // compute the vector of the surface to the light
+            //把局部坐标转化为世界坐标
+            vec3 surfaceWorldPosition = (u_world * a_position).xyz;
+
+            // compute the vector of the surface to the light
+            // and pass it to the fragment shader
+            v_surfaceToLight=u_lightWorldPosition-surfaceWorldPosition;
+
+            // 计算表面到相机的方向
+            // 然后传递到片段着色器
+            v_surfaceToView=u_viewWorldPosition-surfaceWorldPosition;
+
+
+        }
+    </script>
+
+    <script id="fragmentShader3d" type="x-shader/x-fragment">
+        precision mediump float;
+
+        uniform vec4 u_color;
+        uniform float u_shininess;
+
+        varying vec3 v_normal;
+        varying vec3 v_surfaceToLight;
+        varying vec3 v_surfaceToView;
+
+        void main(){
+            // because v_normal is a varying it's interpolated
+            // so it will not be a unit vector. Normalizing it
+            // will make it a unit vector again
+            vec3 normal=normalize(v_normal);
+
+            vec3 surfaceToLightDirection=normalize(v_surfaceToLight);
+            vec3 surfaceToViewDirection=normalize(v_surfaceToView);
+            vec3 halfVector=normalize(surfaceToViewDirection+surfaceToLightDirection);
+
+            float light=dot(normal,surfaceToLightDirection);
+
+            //float specular=dot(normal,halfVector);
+            float specular = 0.0;
+            if (light > 0.0) {
+                specular = pow(dot(normal, halfVector), u_shininess);
+            }
+
+            gl_FragColor=u_color;
+
+            gl_FragColor.rgb*=light;
+
+            // 直接加上高光
+            gl_FragColor.rgb += specular;
+        }
+    </script>
+
+    <style>
+        @import url("https://webglfundamentals.org/webgl/resources/webgl-tutorials.css");
+
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-lessons-ui.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/m4.js"></script>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="uiContainer">
+        <div id="ui">
+            <div id="fRotation"></div>
+            <div id="shininess"></div>
+        </div>
+    </div>
+    <script>
+        function main() {
+            var canvas = document.querySelector("#canvas");
+            var gl = canvas.getContext("webgl");
+            if (!gl) {
+                return;
+            }
+
+            //setup glsl program
+            var program = webglUtils.createProgramFromScripts(gl, ["vertexShader3d", "fragmentShader3d"])
+
+            //look up where the vertex data needs to go;
+            var positionLocation = gl.getAttribLocation(program, "a_position");
+            var normalLocation = gl.getAttribLocation(program, "a_normal");
+
+            // lookup uniforms
+            var worldViewProjectionLocation = gl.getUniformLocation(program, "u_worldViewProjection");
+            var worldInverseTransposeLocation = gl.getUniformLocation(program, "u_worldInverseTranspose");
+            var colorLocation = gl.getUniformLocation(program, "u_color");
+            var lightWorldPositionLocation = gl.getUniformLocation(program, "u_lightWorldPosition");
+            var worldLocation = gl.getUniformLocation(program, "u_world");
+
+            var viewWorldPositionLocation = gl.getUniformLocation(program, "u_viewWorldPosition");
+            var shininessLocation = gl.getUniformLocation(program, "u_shininess");
+
+            // Create a buffer to put positions in
+            var positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            setGeometry(gl);
+
+            var normalBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+            setNormals(gl);
+
+            function radToDeg(r) {
+                return r * 180 / Math.PI;
+            }
+
+            function degToRad(d) {
+                return d * Math.PI / 180;
+            }
+
+            var fieldOfViewRadians = degToRad(80);
+            var fRotationRadians = 0;
+            var shininess = 150;
+
+            drawScene();
+
+            // Setup a ui.
+            webglLessonsUI.setupSlider("#fRotation", { value: fRotationRadians, slide: updateRotation, min: -360, max: 360 });
+            webglLessonsUI.setupSlider("#shininess",{value:shininess,slide:updateShininess, min: 1, max: 300 });
+
+            function updateRotation(e, ui) {
+                fRotationRadians = degToRad(ui.value);
+                drawScene();
+            }
+
+            function updateShininess(e,ui){
+                shininess=ui.value;
+                drawScene();
+            }
+
+            // Draw the scene.
+            function drawScene() {
+                webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+                // Tell WebGL how to convert from clip space to pixels
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+                // Clear the canvas AND the depth buffer.
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                // Turn on culling. By default backfacing triangles
+                // will be culled.
+                gl.enable(gl.CULL_FACE);
+
+                // Enable the depth buffer
+                gl.enable(gl.DEPTH_TEST);
+
+                // Tell it to use our program (pair of shaders)
+                gl.useProgram(program);
+
+                // Turn on the position attribute
+                gl.enableVertexAttribArray(positionLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                var size = 3;
+                var type = gl.FLOAT;
+                var normalize = false;
+                var stride = 0;
+                var offset = 0;
+                gl.vertexAttribPointer(positionLocation, size, type, normalize, stride, offset);
+
+                // Turn on the position attribute
+                gl.enableVertexAttribArray(normalLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+                var size = 3;
+                var type = gl.FLOAT;
+                var normalize = false;
+                var stride = 0;
+                var offset = 0;
+                gl.vertexAttribPointer(normalLocation, size, type, normalize, stride, offset);
+
+                // Compute the projection matrix
+                var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+                var zNear = 1;
+                var zFar = 2000;
+                var projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
+
+                // Compute the camera's matrix
+                var camera = [100, 150, 200];
+                var target = [0, 35, 0];
+                var up = [0, 1, 0];
+                var cameraMatrix = m4.lookAt(camera, target, up);
+
+                
+
+                // Make a view matrix from the camera matrix.
+                var viewMatrix = m4.inverse(cameraMatrix);
+
+                // Compute a view projection matrix
+                var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
+
+                // Draw a F at the origin
+                var worldMatrix = m4.yRotation(fRotationRadians);
+
+                // Multiply the matrices.
+                var worldViewProjectionMatrix = m4.multiply(viewProjectionMatrix, worldMatrix);
+                var worldInverseMatrix = m4.inverse(worldMatrix);
+                var worldInverseTransposeMatrix = m4.transpose(worldInverseMatrix);
+
+                // Set the matrices
+                gl.uniformMatrix4fv(worldViewProjectionLocation, false, worldViewProjectionMatrix);
+                gl.uniformMatrix4fv(worldInverseTransposeLocation, false, worldInverseTransposeMatrix);
+                gl.uniformMatrix4fv(worldLocation, false, worldMatrix);
+
+                // Set the color to use
+                gl.uniform4fv(colorLocation, [0.2, 1, 0.2, 1]); // green
+
+                // set the light position
+                gl.uniform3fv(lightWorldPositionLocation, [20, 30, 60]);
+
+                //设置相机位置
+                gl.uniform3fv(viewWorldPositionLocation, camera);
+                // set the shininess
+                gl.uniform1f(shininessLocation, shininess);
+
+                //draw the geometry;
+                var primitiveType = gl.TRIANGLES;
+                var offset = 0;
+                var count = 16 * 6;
+                gl.drawArrays(primitiveType, offset, count);
+
+            }
+
+        }
+
+        function setGeometry(gl) {
+            var positions = new Float32Array([
+                // left column front
+                0, 0, 0,
+                0, 150, 0,
+                30, 0, 0,
+                0, 150, 0,
+                30, 150, 0,
+                30, 0, 0,
+
+                // top rung front
+                30, 0, 0,
+                30, 30, 0,
+                100, 0, 0,
+                30, 30, 0,
+                100, 30, 0,
+                100, 0, 0,
+
+                // middle rung front
+                30, 60, 0,
+                30, 90, 0,
+                67, 60, 0,
+                30, 90, 0,
+                67, 90, 0,
+                67, 60, 0,
+
+                // left column back
+                0, 0, 30,
+                30, 0, 30,
+                0, 150, 30,
+                0, 150, 30,
+                30, 0, 30,
+                30, 150, 30,
+
+                // top rung back
+                30, 0, 30,
+                100, 0, 30,
+                30, 30, 30,
+                30, 30, 30,
+                100, 0, 30,
+                100, 30, 30,
+
+                // middle rung back
+                30, 60, 30,
+                67, 60, 30,
+                30, 90, 30,
+                30, 90, 30,
+                67, 60, 30,
+                67, 90, 30,
+
+                // top
+                0, 0, 0,
+                100, 0, 0,
+                100, 0, 30,
+                0, 0, 0,
+                100, 0, 30,
+                0, 0, 30,
+
+                // top rung right
+                100, 0, 0,
+                100, 30, 0,
+                100, 30, 30,
+                100, 0, 0,
+                100, 30, 30,
+                100, 0, 30,
+
+                // under top rung
+                30, 30, 0,
+                30, 30, 30,
+                100, 30, 30,
+                30, 30, 0,
+                100, 30, 30,
+                100, 30, 0,
+
+                // between top rung and middle
+                30, 30, 0,
+                30, 60, 30,
+                30, 30, 30,
+                30, 30, 0,
+                30, 60, 0,
+                30, 60, 30,
+
+                // top of middle rung
+                30, 60, 0,
+                67, 60, 30,
+                30, 60, 30,
+                30, 60, 0,
+                67, 60, 0,
+                67, 60, 30,
+
+                // right of middle rung
+                67, 60, 0,
+                67, 90, 30,
+                67, 60, 30,
+                67, 60, 0,
+                67, 90, 0,
+                67, 90, 30,
+
+                // bottom of middle rung.
+                30, 90, 0,
+                30, 90, 30,
+                67, 90, 30,
+                30, 90, 0,
+                67, 90, 30,
+                67, 90, 0,
+
+                // right of bottom
+                30, 90, 0,
+                30, 150, 30,
+                30, 90, 30,
+                30, 90, 0,
+                30, 150, 0,
+                30, 150, 30,
+
+                // bottom
+                0, 150, 0,
+                0, 150, 30,
+                30, 150, 30,
+                0, 150, 0,
+                30, 150, 30,
+                30, 150, 0,
+
+                // left side
+                0, 0, 0,
+                0, 0, 30,
+                0, 150, 30,
+                0, 0, 0,
+                0, 150, 30,
+                0, 150, 0]);
+
+            // Center the F around the origin and Flip it around. We do this because
+            // we're in 3D now with and +Y is up where as before when we started with 2D
+            // we had +Y as down.
+
+            // We could do by changing all the values above but I'm lazy.
+            // We could also do it with a matrix at draw time but you should
+            // never do stuff at draw time if you can do it at init time.
+
+            //xRotation(Math.PI) 表示绕 X 轴旋转 180°。这样就把 F 翻过来，解决了 Y 方向的问题。
+            var matrix = m4.xRotation(Math.PI);
+            //原始 F 的顶点坐标是相对于左上角（像素坐标系）的，大概在 (0,0) ~ (100, 150) 这个范围。
+            matrix = m4.translate(matrix, -50, -75, -15);
+
+            for (var ii = 0; ii < positions.length; ii += 3) {
+                var vector = m4.transformPoint(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
+                positions[ii + 0] = vector[0];
+                positions[ii + 1] = vector[1];
+                positions[ii + 2] = vector[2];
+            }
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        }
+
+        function setNormals(gl) {
+            var normals = new Float32Array([
+                // left column front
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+
+                // top rung front
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+
+                // middle rung front
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+                0, 0, 1,
+
+                // left column back
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+
+                // top rung back
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+
+                // middle rung back
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+                0, 0, -1,
+
+                // top
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+
+                // top rung right
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+
+                // under top rung
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+
+                // between top rung and middle
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+
+                // top of middle rung
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+                0, 1, 0,
+
+                // right of middle rung
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+
+                // bottom of middle rung.
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+
+                // right of bottom
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+                1, 0, 0,
+
+                // bottom
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+                0, -1, 0,
+
+                // left side
+                -1, 0, 0,
+                -1, 0, 0,
+                -1, 0, 0,
+                -1, 0, 0,
+                -1, 0, 0,
+                -1, 0, 0]);
+            gl.bufferData(gl.ARRAY_BUFFER, normals, gl.STATIC_DRAW);
+        }
+
+
+        main();
+    </script>
+</body>
+
+</html>
