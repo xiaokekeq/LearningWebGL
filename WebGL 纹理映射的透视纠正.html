@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script id="vertexShader2d" type="x-shader/x-vertex">
+        attribute vec4 a_position;
+        attribute float a_brightness;
+
+        varying float v_brightness;
+        void main(){
+            gl_Position=a_position;
+            v_brightness=a_brightness;
+        }
+    </script>
+    <script id="fragmentShader2d" type="x-shader/x-fragment">
+        precision mediump float;
+
+        varying float v_brightness;
+
+        void main(){
+            gl_FragColor=vec4(fract(v_brightness*10.), 0, 0, 1);
+        }
+    </script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+    <style>
+        @import url("https://webglfundamentals.org/webgl/resources/webgl-tutorials.css");
+
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas class="webgl"></canvas>
+    <script>
+        function main() {
+            const canvas = document.querySelector(".webgl");
+            const gl = canvas.getContext("webgl");
+            if (!gl) {
+                return;
+            }
+
+            const program = webglUtils.createProgramFromScripts(gl, ["vertexShader2d", "fragmentShader2d"]);
+
+            const positionLocation = gl.getAttribLocation(program, "a_position");
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            setGeometry(gl);
+            
+            const brightnessLocation=gl.getAttribLocation(program,"a_brightness");
+            const brightnessBuffer=gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, brightnessBuffer);
+            setBrightness(gl);
+           
+
+            function render() {
+
+                webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+                gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+                gl.clearColor(0, 0, 0, 1);
+
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                gl.useProgram(program);
+
+                gl.enableVertexAttribArray(positionLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+                // Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+                var size = 4;          // 4 components per iteration
+                var type = gl.FLOAT;   // the data is 32bit floats
+                var normalize = false; // don't normalize the data
+                var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+                var offset = 0;        // start at the beginning of the buffer
+                gl.vertexAttribPointer(
+                    positionLocation, size, type, normalize, stride, offset);
+
+
+                gl.enableVertexAttribArray(brightnessLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, brightnessBuffer);
+                // Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+                var size = 1;          // 4 components per iteration
+                var type = gl.FLOAT;   // the data is 32bit floats
+                var normalize = false; // don't normalize the data
+                var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+                var offset = 0;        // start at the beginning of the buffer
+                gl.vertexAttribPointer(
+                    brightnessLocation, size, type, normalize, stride, offset);
+
+                var primitiveType=gl.TRIANGLES;
+                var offset =0;
+                var count=4*3;
+                gl.drawArrays(primitiveType, offset, count);
+            }
+            render();
+        }
+
+        function setGeometry(gl) {
+            
+            /* var positions = [
+                -.8, .8, 0, 1,  // 1st rect 1st triangle
+                .8, .8, 0, 1,
+                -.8, .2, 0, 1,
+                -.8, .2, 0, 1,  // 1st rect 2nd triangle
+                .8, .8, 0, 1,
+                .8, .2, 0, 1,
+
+                -.8, -.2, 0, 1,  // 2nd rect 1st triangle
+                .8, -.2, 0, 1,
+                -.8, -.8, 0, 1,
+                -.8, -.8, 0, 1,  // 2nd rect 2nd triangle
+                .8, -.2, 0, 1,
+                .8, -.8, 0, 1,
+            ]; */
+
+            var mult = 20;
+            var positions = [
+                -.8, .8, 0, 1,  // 第一个矩形的第一个三角形
+                .8, .8, 0, 1,
+                -.8, .2, 0, 1,
+                -.8, .2, 0, 1,  // 第一个矩形的第二个三角形
+                .8, .8, 0, 1,
+                .8, .2, 0, 1,
+
+                -.8, -.2, 0, 1,  // 第二个矩形的第一个三角形
+                .8 * mult, -.2 * mult, 0, mult,
+                -.8, -.8, 0, 1,
+                -.8, -.8, 0, 1,  // 第二个矩形的第二个三角形
+                .8 * mult, -.2 * mult, 0, mult,
+                .8 * mult, -.8 * mult, 0, mult,
+            ];
+
+
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+        }
+        
+        function setBrightness(gl){
+            var brightness=new Float32Array([
+                0,  // 第一个矩形的第一个三角形
+                1,
+                0,
+                0,  // 第一个矩形的第二个三角形
+                1,
+                1,
+
+                0,  // 第二个矩形的第一个三角形
+                1,
+                0,
+                0,  // 第二个矩形的第二个三角形
+                1,
+                1, 
+            ]);
+            gl.bufferData(gl.ARRAY_BUFFER,brightness,gl.STATIC_DRAW);
+        }
+        
+        main();
+    </script>
+</body>
+
+</html>
