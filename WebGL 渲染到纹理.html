@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script id="vertexShader2d" type="x-shader/x-vertex">
+        attribute vec4 a_position;
+        attribute vec2 a_texcoord;
+
+        uniform mat4 u_matrix;
+
+        varying vec2 v_texcoord;
+
+        void main(){
+            gl_Position=u_matrix*a_position;
+            v_texcoord=a_texcoord;
+        }
+    </script>
+    <script id="fragmentShader2d" type="x-shader/x-fragment">
+        precision mediump float;
+
+        varying vec2 v_texcoord;
+
+        uniform sampler2D u_texture;
+        uniform vec4 u_colorMult;
+
+        void main(){
+            gl_FragColor=texture2D(u_texture,v_texcoord)*u_colorMult;
+        }
+
+    </script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/m4.js"></script>
+
+    <style>
+        @import url("https://webglfundamentals.org/webgl/resources/webgl-tutorials.css");
+
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+
+</head>
+
+<body>
+    <canvas class="webgl"></canvas>
+    <script>
+        function main() {
+            var canvas = document.querySelector(".webgl");
+            var gl = canvas.getContext("webgl");
+            if (!gl) {
+                return;
+            }
+
+            //setup GLSL program
+            var program = webglUtils.createProgramFromScripts(gl, ["vertexShader2d", "fragmentShader2d"]);
+
+            // look up where the vertex data needs to go.
+            var positionLocation = gl.getAttribLocation(program, "a_position");
+            var texcoordLocation = gl.getAttribLocation(program, "a_texcoord");
+
+            //look up uniform location
+            var matrixLocation = gl.getUniformLocation(program, "u_matrix");
+            var textureLocation = gl.getUniformLocation(program, "u_texture");
+            var colorMultLocation = gl.getUniformLocation(program, "u_colorMult");
+
+            //create buffer
+            var positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            setGeometry(gl);
+
+            var texcoordBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+            setTexcoords(gl);
+
+            //create Texture
+            var texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            {
+                // fill texture with 3x2 pixels
+                const level = 0;
+                const internalFormat = gl.LUMINANCE;
+                const width = 3;
+                const height = 2;
+                const border = 0;
+                const format = gl.LUMINANCE;
+                const type = gl.UNSIGNED_BYTE;
+                const data = new Uint8Array([
+                    128, 64, 128,
+                    0, 192, 0,
+                ]);
+                //gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment) 是在 WebGL 上传纹理数据到 GPU 时，
+                //控制 像素数据行的字节对齐方式（byte alignment） 的。
+                //在显存或内存中，一张图像不是一行接一行地紧密排列的，因为很多图像的每一行的大小可能不是 4 的倍数。
+                const alignment = 1;
+                gl.pixelStorei(gl.UNPACK_ALIGNMENT, alignment);
+                gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, border, format, type, data);
+
+                // set the filtering so we don't need mips and it's not filtered
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            }
+
+            // Create a texture to render to
+            const targetTextureWidth = 256;
+            const targetTextureHeight = 256;
+            const targetTexture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+            {
+                const level = 0;
+                const internalFormat = gl.RGBA;
+                const border = 0;
+                const format = gl.RGBA;
+                const type = gl.UNSIGNED_BYTE;
+                const data = null;
+                gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, targetTextureWidth, targetTextureHeight, border, format, type, data);
+
+                // set the filtering so we don't need mips and it's not filtered
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            }
+
+
+            //创建一个离屏（off-screen）帧缓冲区 Framebuffer，
+            // 并把一张纹理（targetTexture）作为它的颜色输出目标（color attachment）。
+            //create and bind the framebuffer
+            const fb = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+
+            // attach the texture as the first color attachment
+            const attachmentPoint = gl.COLOR_ATTACHMENT0;// 表示这是颜色输出
+            const level = 0;// mipmap级别
+            //把一张纹理附加到 framebuffer 上，让 framebuffer 有一个颜色缓冲可以存放渲染结果。
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
+
+            //renderbuffer 与 texture 不同：renderbuffer 通常用于作为帧缓冲的附件，
+            //但不能直接在着色器里采样（除非把数据复制到纹理或使用深度纹理扩展）。
+            const depthBuffer=gl.createRenderbuffer();
+            //将刚创建的 renderbuffer 绑定到当前 WebGL 上下文的 gl.RENDERBUFFER 目标。
+            gl.bindRenderbuffer(gl.RENDERBUFFER,depthBuffer);
+
+            //make a depth buffer and the same size as the targetTexture
+            //为已绑定的 renderbuffer 分配存储，指定格式和尺寸：
+            //gl.DEPTH_COMPONENT16：表示每个像素用 16 位来存储深度值（常见且兼容性好）。
+            //targetTextureWidth/Height:给这个 renderbuffer 开辟一块 width×height 的深度存储空间。
+            gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT16,targetTextureWidth,targetTextureHeight);
+            //把这个 renderbuffer 附着到当前绑定的 framebuffer 上，作为深度附件
+            //之后，当你绑定这个 framebuffer 并渲染时，GPU 会把深度信息写入这个 renderbuffer，
+            //以便执行深度测试（gl.enable(gl.DEPTH_TEST)）和后续深度比较。
+            gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depthBuffer);
+
+
+            function degtoRad(d) {
+                return d * Math.PI / 180;
+            }
+
+            var fieldOfViewRadians = degtoRad(60);
+            var modelXRotationRadians = degtoRad(0);
+            var modelYRotationRadians = degtoRad(0);
+
+            var then = 0;
+
+            requestAnimationFrame(drawScene);
+
+            function drawCube(aspect) {
+                // Tell it to use our program (pair of shaders)
+                gl.useProgram(program);
+
+                //Turn on the position attribute
+                gl.enableVertexAttribArray(positionLocation);
+
+                //bind the position buffer.
+                gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+                // Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+                var size = 3;          // 3 components per iteration
+                var type = gl.FLOAT;   // the data is 32bit floats
+                var normalize = false; // don't normalize the data
+                var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+                var offset = 0;        // start at the beginning of the buffer
+                gl.vertexAttribPointer(
+                    positionLocation, size, type, normalize, stride, offset);
+
+                // Turn on the texcoord attribute
+                gl.enableVertexAttribArray(texcoordLocation);
+                gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+                // Tell the attribute how to get data out of texcoordBuffer (ARRAY_BUFFER)
+                var size = 2;          // 2 components per iteration
+                var type = gl.FLOAT;   // the data is 32bit floats
+                var normalize = false; // don't normalize the data
+                var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+                var offset = 0;        // start at the beginning of the buffer    
+                gl.vertexAttribPointer(texcoordLocation, size, type, normalize, stride, offset);
+
+                //compute the projection matrix
+                var projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
+
+                var cameraPosition = [0, 0, 2];
+                var up = [0, 1, 0];
+                var target = [0, 0, 0];
+
+                //compute the camera's matrix using look at.
+                var cameraMatrix = m4.lookAt(cameraPosition, target, up);
+                //make a view matrix from the camera matrix.
+                var viewMatrix = m4.inverse(cameraMatrix);
+
+                var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
+
+                /* var matrix = m4.xRotate(viewProjectionMatrix, modelXRotationRadians);
+                matrix = m4.yRotate(matrix, modelYRotationRadians);
+                //set the matrix.
+                gl.uniformMatrix4fv(matrixLocation, false, matrix);
+
+                //Tell the shader to use texture unit 0 for u_texture
+                gl.uniform1i(textureLocation, 0);
+
+                //Draw the geometry.
+                gl.drawArrays(gl.TRIANGLES, 0, 6*6); */
+
+                for (let x = -1; x <= 1; x++) {
+                    var matrix = m4.translate(viewProjectionMatrix, x * .9, 0, 0);
+                    matrix = m4.xRotate(matrix, modelXRotationRadians * x);
+                    matrix = m4.yRotate(matrix, modelYRotationRadians * x);
+
+                    //set the matrix.
+                    gl.uniformMatrix4fv(matrixLocation, false, matrix);
+
+                    //Tell the shader to use texture unit 0 for u_texture
+                    gl.uniform1i(textureLocation, 0);
+
+                    const c = x * .5 + .5;
+                    gl.uniform4fv(colorMultLocation, [c, 1, 1 - c, 1]);
+                    //Draw the geometry.
+                    gl.drawArrays(gl.TRIANGLES, 0, 6 * 6);
+                }
+
+
+            }
+
+            //draw the scene.
+            function drawScene(time) {
+                time *= 0.001;
+                var deltaTime = time - then;
+                then = time;
+
+                //animate the rotation
+                modelYRotationRadians += -0.7 * deltaTime;
+                modelXRotationRadians += -0.4 * deltaTime;
+
+                webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+                gl.enable(gl.CULL_FACE);
+                gl.enable(gl.DEPTH_TEST);
+
+                {
+                    // render to our targetTexture by binding the framebuffer
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+
+                    //render cube with our 3*2 texture
+                    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+                    // Tell WebGL how to convert from clip space to pixels
+                    gl.viewport(0, 0, targetTextureWidth, targetTextureHeight);
+
+                    //clear the attachment
+                    gl.clearColor(0, 0, 1, 1);
+                    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                    const aspect = targetTextureWidth / targetTextureHeight;
+                    drawCube(aspect);
+                }
+
+                {
+                    //render to the canvas
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+                    // render the cube with the texture we just rendered to
+                    gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+
+                    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+                    //clear the canvas and the depth buffer.
+                    gl.clearColor(1, 1, 1, 1);
+                    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                    const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+                    drawCube(aspect);
+
+                }
+                requestAnimationFrame(drawScene);
+            }
+        }
+
+        // Fill the buffer with the values that define a cube.
+        function setGeometry(gl) {
+            var positions = new Float32Array(
+                [
+                    -0.5, -0.5, -0.5,
+                    -0.5, 0.5, -0.5,
+                    0.5, -0.5, -0.5,
+                    -0.5, 0.5, -0.5,
+                    0.5, 0.5, -0.5,
+                    0.5, -0.5, -0.5,
+
+                    -0.5, -0.5, 0.5,
+                    0.5, -0.5, 0.5,
+                    -0.5, 0.5, 0.5,
+                    -0.5, 0.5, 0.5,
+                    0.5, -0.5, 0.5,
+                    0.5, 0.5, 0.5,
+
+                    -0.5, 0.5, -0.5,
+                    -0.5, 0.5, 0.5,
+                    0.5, 0.5, -0.5,
+                    -0.5, 0.5, 0.5,
+                    0.5, 0.5, 0.5,
+                    0.5, 0.5, -0.5,
+
+                    -0.5, -0.5, -0.5,
+                    0.5, -0.5, -0.5,
+                    -0.5, -0.5, 0.5,
+                    -0.5, -0.5, 0.5,
+                    0.5, -0.5, -0.5,
+                    0.5, -0.5, 0.5,
+
+                    -0.5, -0.5, -0.5,
+                    -0.5, -0.5, 0.5,
+                    -0.5, 0.5, -0.5,
+                    -0.5, -0.5, 0.5,
+                    -0.5, 0.5, 0.5,
+                    -0.5, 0.5, -0.5,
+
+                    0.5, -0.5, -0.5,
+                    0.5, 0.5, -0.5,
+                    0.5, -0.5, 0.5,
+                    0.5, -0.5, 0.5,
+                    0.5, 0.5, -0.5,
+                    0.5, 0.5, 0.5,
+
+                ]);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+        }
+
+        // Fill the buffer with texture coordinates the cube.
+        function setTexcoords(gl) {
+            gl.bufferData(
+                gl.ARRAY_BUFFER,
+                new Float32Array(
+                    [
+                        0, 0,
+                        0, 1,
+                        1, 0,
+                        0, 1,
+                        1, 1,
+                        1, 0,
+
+                        0, 0,
+                        0, 1,
+                        1, 0,
+                        1, 0,
+                        0, 1,
+                        1, 1,
+
+                        0, 0,
+                        0, 1,
+                        1, 0,
+                        0, 1,
+                        1, 1,
+                        1, 0,
+
+                        0, 0,
+                        0, 1,
+                        1, 0,
+                        1, 0,
+                        0, 1,
+                        1, 1,
+
+                        0, 0,
+                        0, 1,
+                        1, 0,
+                        0, 1,
+                        1, 1,
+                        1, 0,
+
+                        0, 0,
+                        0, 1,
+                        1, 0,
+                        1, 0,
+                        0, 1,
+                        1, 1,
+
+                    ]),
+                gl.STATIC_DRAW);
+        }
+
+        main();
+    </script>
+</body>
+
+</html>
