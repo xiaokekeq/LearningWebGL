@@ -221,6 +221,18 @@
                 // Setup all the needed attributes.
                 webglUtils.setAttributes(attributeSetters, attribs);
 
+                /**
+                 * WebGL 有两种绘制方式
+                 * 直接绘制（非索引绘制 / drawArrays）
+                 *      每 3 个顶点组成一个三角形。
+                 *      如果一个顶点被多个三角形共享，就要在顶点数组里重复写好几次。
+                 * 
+                 * 索引绘制（drawElements）
+                        把所有顶点存放在 vertex buffer 里。
+                        再单独存一个 index buffer，用来描述这些顶点的组合方式。
+                        GPU 会根据索引来取顶点，不用重复存顶点数据。
+                    ELEMENT_ARRAY_BUFFER 就是专门为 索引数组 服务的 buffer。
+                 */
                 // Bind the indices.
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
 
