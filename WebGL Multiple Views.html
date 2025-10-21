@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script id="vertexShader" type="x-shader/x-vertex">
+        attribute vec4 a_position;
+        attribute vec4 a_color;
+        uniform mat4 u_matrix;
+        varying vec4 v_color;
+        void main(){
+            gl_Position=u_matrix*a_position;
+            v_color=a_color;
+        }
+    </script>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        precision mediump float;
+
+        varying vec4 v_color;
+
+        void main(){
+            gl_FragColor=v_color;
+        }
+
+    </script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-lessons-ui.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/webgl-utils.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/m4.js"></script>
+    <script src="https://webglfundamentals.org/webgl/resources/primitives.js"></script>
+    <style>
+        @import url("https://webglfundamentals.org/webgl/resources/webgl-tutorials.css");
+
+        body {
+            margin: 0;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="uiContainer">
+        <div id="ui"></div>
+    </div>
+    <script>
+        function main() {
+            const canvas = document.querySelector("#canvas");
+            const gl = canvas.getContext("webgl");
+            if (!gl) return;
+
+            const programInfo = webglUtils.createProgramInfo(gl, ["vertexShader", "fragmentShader"]);
+
+            const bufferInfo = primitives.create3DFBufferInfo(gl);
+            function degToRad(d) {
+                return d * Math.PI / 180;
+            }
+
+            const settings = {
+                rotation: 150
+            };
+
+            webglLessonsUI.setupUI(document.querySelector("#ui"), settings, [
+                { type: 'slider', key: 'rotation', min: 0, max: 360, change: render, precision: 2, step: 0.001, },
+            ]);
+
+            const fieldOfViewRadians = degToRad(120);
+
+            function drawScene(projectionMatrix, cameraMatrix, worldMatrix) {
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                const viewMatrix = m4.inverse(cameraMatrix);
+                let mat = m4.multiply(projectionMatrix, viewMatrix);
+                mat = m4.multiply(mat, worldMatrix);
+
+                gl.useProgram(programInfo.program);
+
+                // ------ Draw the F --------
+                webglUtils.setBuffersAndAttributes(gl, programInfo, bufferInfo);
+
+                webglUtils.setUniforms(programInfo, {
+                    u_matrix: mat
+                });
+
+                webglUtils.drawBufferInfo(gl, bufferInfo);
+            }
+
+            /* function render(){
+                webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+                gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+                gl.enable(gl.CULL_FACE);
+                gl.enable(gl.DEPTH_TEST);
+
+                const aspect=gl.canvas.clientWidth/gl.canvas.clientHeight;
+                const near=1;
+                const far=2000;
+
+                const perspectiveProjectionMatrix=m4.perspective(fieldOfViewRadians,aspect,near,far)
+                const cameraPosition=[0,0,-75];
+                const target=[0,0,0];
+                const up=[0,1,0];
+                const cameraMatrix=m4.lookAt(cameraPosition,target,up);
+
+                let worldMatrix=m4.yRotation(degToRad(settings.rotation));
+                worldMatrix=m4.xRotate(worldMatrix,degToRad(settings.rotation));
+
+                worldMatrix=m4.translate(worldMatrix, -35, -75, -5);
+
+                drawScene(perspectiveProjectionMatrix, cameraMatrix, worldMatrix);
+            }
+            render(); */
+
+            function render() {
+                webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+                gl.enable(gl.CULL_FACE);
+                gl.enable(gl.DEPTH_TEST);
+                gl.enable(gl.SCISSOR_TEST);
+
+                const effectiveWidth = gl.canvas.clientWidth / 2;
+                const aspect = effectiveWidth / gl.canvas.clientHeight;
+                const near = 1;
+                const far = 2000;
+
+                const perspectiveProjectionMatrix = m4.perspective(fieldOfViewRadians, aspect, near, far);
+
+                const halfHeightUnits = 120;
+                const orthographicProjectionMatrix = m4.orthographic(
+                    -halfHeightUnits * aspect,  // left
+                    halfHeightUnits * aspect,  // right
+                    -halfHeightUnits,           // bottom
+                    halfHeightUnits,           // top
+                    -75,                       // near
+                    2000);                     // far
+
+                // Compute the camera's matrix using look at.
+                const cameraPosition = [0, 0, -75];
+                const target = [0, 0, 0];
+                const up = [0, 1, 0];
+                const cameraMatrix = m4.lookAt(cameraPosition, target, up);
+
+                let worldMatrix = m4.yRotation(degToRad(settings.rotation));
+                worldMatrix = m4.xRotate(worldMatrix, degToRad(settings.rotation));
+                // center the 'F' around its origin
+                worldMatrix = m4.translate(worldMatrix, -35, -75, -5);
+
+                const { width, height } = gl.canvas;
+                const leftWidth = width / 2 | 0;
+
+                // draw on the left with orthographic camera
+                gl.viewport(0, 0, leftWidth, height);
+                gl.scissor(0, 0, leftWidth, height);
+                gl.clearColor(1, 0, 0, 1);  // red
+                drawScene(orthographicProjectionMatrix, cameraMatrix, worldMatrix);
+
+                // draw on the right with perspective camera
+                const rightWidth = width - leftWidth;
+                gl.viewport(leftWidth, 0, rightWidth, height);
+                gl.scissor(leftWidth, 0, rightWidth, height);
+                gl.clearColor(0, 0, 1, 1);  // blue
+                drawScene(perspectiveProjectionMatrix, cameraMatrix, worldMatrix);
+            }
+
+            render();
+        }
+        main();
+    </script>
+</body>
+
+</html>
